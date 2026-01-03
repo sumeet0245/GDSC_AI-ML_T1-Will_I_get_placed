@@ -1,0 +1,250 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, \
+    classification_report
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
+
+#  LOAD AND EXPLORE DATA
+print("=" * 60)
+print("STEP 1: EXPLORATORY DATA ANALYSIS (EDA)")
+print("=" * 60)
+
+df = pd.read_csv('Placement_BeginnerTask01.csv')
+
+# Cleaning up whitespace in PlacementStatus column
+df['PlacementStatus'] = df['PlacementStatus'].str.strip()
+
+print("\n1. Dataset Overview:")
+print(f"   Shape: {df.shape}")
+print(f"   Total Students: {df.shape[0]}")
+
+print(f"\n2. First few rows:")
+print(df.head())
+
+print(f"\n3. Data Types:")
+print(df.dtypes)
+
+print(f"\n4. Placement Distribution:")
+print(f"   Unique values in PlacementStatus: {df['PlacementStatus'].unique()}")
+placement_counts = df['PlacementStatus'].value_counts()
+print(placement_counts)
+placement_pct = df['PlacementStatus'].value_counts(normalize=True) * 100
+print(f"\n   Distribution:")
+for status, pct in placement_pct.items():
+    print(f"   {status}: {pct:.2f}% ({placement_counts[status]} students)")
+
+print(f"\n5. Statistical Summary:")
+print(df.describe())
+
+# VISUALIZATIONS FOR EDA
+print("\n" + "=" * 60)
+print("STEP 2: VISUALIZATION & PATTERN ANALYSIS")
+print("=" * 60)
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# Plot 1: Placement Status Distribution
+placement_data = df['PlacementStatus'].value_counts()
+axes[0, 0].bar(placement_data.index, placement_data.values, color=['#2ecc71', '#e74c3c'])
+axes[0, 0].set_title('Placement Status Distribution', fontsize=12, fontweight='bold')
+axes[0, 0].set_ylabel('Number of Students')
+for i, v in enumerate(placement_data.values):
+    axes[0, 0].text(i, v + 50, str(v), ha='center')
+
+# Plot 2: CGPA Distribution
+cgpa_placed = df[df['PlacementStatus'] == 'Placed']['CGPA']
+cgpa_not_placed = df[df['PlacementStatus'] == 'Not Placed']['CGPA']
+if len(cgpa_not_placed) > 0:
+    axes[0, 1].hist([cgpa_placed, cgpa_not_placed], label=['Placed', 'Not Placed'], bins=30,
+                    color=['#2ecc71', '#e74c3c'])
+    axes[0, 1].legend()
+else:
+    axes[0, 1].hist(cgpa_placed, bins=30, alpha=0.7, color='#2ecc71')
+axes[0, 1].set_title('CGPA Distribution by Placement Status', fontsize=12, fontweight='bold')
+axes[0, 1].set_xlabel('CGPA')
+
+# Plot 3: Internships Impact
+internship_placement = df.groupby('Internships')['PlacementStatus'].apply(
+    lambda x: (x == 'Placed').sum() / len(x) * 100)
+axes[1, 0].plot(internship_placement.index, internship_placement.values, marker='o', linewidth=2, markersize=8,
+                color='#3498db')
+axes[1, 0].set_title('Placement Rate vs Number of Internships', fontsize=12, fontweight='bold')
+axes[1, 0].set_xlabel('Number of Internships')
+axes[1, 0].set_ylabel('Placement Rate (%)')
+axes[1, 0].grid(True, alpha=0.3)
+
+# Plot 4: Aptitude Score Impact
+aptitude_placement = df.groupby(pd.cut(df['AptitudeTestScore'], bins=5))['PlacementStatus'].apply(
+    lambda x: (x == 'Placed').sum() / len(x) * 100)
+axes[1, 1].bar(range(len(aptitude_placement)), aptitude_placement.values, color='skyblue')
+axes[1, 1].set_title('Placement Rate vs Aptitude Score Range', fontsize=12, fontweight='bold')
+axes[1, 1].set_xlabel('Aptitude Score Range')
+axes[1, 1].set_ylabel('Placement Rate (%)')
+axes[1, 1].set_xticks(range(len(aptitude_placement)))
+axes[1, 1].set_xticklabels(['Very Low', 'Low', 'Medium', 'High', 'Very High'])
+
+plt.tight_layout()
+plt.show()
+
+# Key Insights
+print("\nKey Insights from EDA:")
+print(f"• Average CGPA of placed students: {cgpa_placed.mean():.2f}")
+print(f"• Average CGPA of non-placed students: {cgpa_not_placed.mean():.2f}")
+print(
+    f"• Placement rate with 2+ internships: {df[df['Internships'] >= 2]['PlacementStatus'].value_counts(normalize=True).get('Placed', 0) * 100:.2f}%")
+
+# DATA PREPROCESSING
+print("\n" + "=" * 60)
+print("STEP 3: DATA PREPROCESSING")
+print("=" * 60)
+
+df_processed = df.copy()
+
+# Encode categorical variables
+label_encoders = {}
+categorical_cols = ['ExtracurricularActivities', 'PlacementTraining']
+
+for col in categorical_cols:
+    le = LabelEncoder()
+    df_processed[col] = le.fit_transform(df_processed[col])
+    label_encoders[col] = le
+    print(f"✓ Encoded {col}")
+
+# Create target variable (binary: 1 for Placed, 0 for Not Placed)
+df_processed['PlacementTarget'] = (df_processed['PlacementStatus'] == 'Placed').astype(int)
+
+# Separate features and target
+x = df_processed.drop(['StudentID', 'PlacementStatus', 'PlacementTarget'], axis=1)
+y = df_processed['PlacementTarget']
+
+print(f"\n✓ Features shape: {x.shape}")
+print(f"✓ Target shape: {y.shape}")
+print(f"✓ Features: {list(x.columns)}")
+
+# TRAIN-TEST SPLIT
+print("\n" + "=" * 60)
+print("STEP 4: TRAIN-TEST SPLIT")
+print("=" * 60)
+
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42, stratify=y)
+
+print(f"✓ Training set: {x_train.shape[0]} samples")
+print(f"✓ Testing set: {x_test.shape[0]} samples")
+
+#  FEATURE SCALING
+print("\n" + "=" * 60)
+print("STEP 5: FEATURE SCALING")
+print("=" * 60)
+
+sc = StandardScaler()
+X_train_scaled = sc.fit_transform(x_train)
+X_test_scaled = sc.transform(x_test)
+
+print(f"Features scaled using StandardScaler")
+
+#  MODEL TRAINING
+print("\n" + "=" * 60)
+print("STEP 6: MODEL TRAINING & EVALUATION")
+print("=" * 60)
+
+print("\nTraining Logistic Regression Model...")
+model = LogisticRegression(random_state=42, max_iter=1000)
+model.fit(X_train_scaled, y_train)
+print("Model trained successfully!")
+
+#  PREDICTIONS
+y_pred = model.predict(X_test_scaled)
+y_pred_proba = model.predict_proba(X_test_scaled)
+
+# MODEL EVALUATION
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+f1 = f1_score(y_test, y_pred)
+
+print("\n" + "=" * 60)
+print("MODEL PERFORMANCE METRICS")
+print("=" * 60)
+print(f"\nAccuracy:  {accuracy:.4f} ({accuracy * 100:.2f}%)")
+print(f"Precision: {precision:.4f}")
+print(f"Recall:    {recall:.4f}")
+print(f"F1-Score:  {f1:.4f}")
+
+if accuracy >= 0.60:
+    print(f"\n Model meets 60% accuracy requirement! ({accuracy * 100:.2f}%)")
+else:
+    print(f"\n Model accuracy is below 60% ({accuracy * 100:.2f}%)")
+
+print("\nConfusion Matrix:")#                     predict no   predict yes
+cm = confusion_matrix(y_test, y_pred)#actual no
+print(cm)#                            actual yes
+
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred, target_names=['Not Placed', 'Placed']))
+
+# VISUALIZATIONS: MODEL PERFORMANCE
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Confusion Matrix Heatmap
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[0],
+            xticklabels=['Not Placed', 'Placed'],
+            yticklabels=['Not Placed', 'Placed'])
+axes[0].set_title('Confusion Matrix', fontsize=12, fontweight='bold')
+axes[0].set_ylabel('True Label')
+axes[0].set_xlabel('Predicted Label')
+
+# Model Metrics Bar Chart
+metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+values = [accuracy, precision, recall, f1]
+axes[1].bar(metrics, values, color=['#2ecc71', '#3498db', '#f39c12', '#e74c3c'])
+axes[1].set_title('Model Performance Metrics', fontsize=12, fontweight='bold')
+axes[1].set_ylabel('Score')
+axes[1].set_ylim(0, 1)
+for i, v in enumerate(values):
+    axes[1].text(i, v + 0.02, f'{v:.3f}', ha='center')
+
+plt.tight_layout()
+plt.show()
+
+# FEATURE IMPORTANCE
+print("\n" + "=" * 60)
+print("STEP 7: FEATURE COEFFICIENTS")
+print("=" * 60)
+
+feature_importance = pd.DataFrame({
+    'Feature': x.columns,
+    'Coefficient': model.coef_[0]
+}).sort_values('Coefficient', ascending=False, key=abs)
+
+print("\nTop Features Influencing Placement:")
+print(feature_importance.head(10))
+
+plt.figure(figsize=(10, 6))
+top_features = feature_importance.head(8)
+plt.barh(top_features['Feature'], top_features['Coefficient'])
+plt.title('Top 8 Features Influencing Placement (Logistic Regression)', fontsize=12, fontweight='bold')
+plt.xlabel('Coefficient Value')
+plt.tight_layout()
+plt.show()
+
+#  SAMPLE PREDICTIONS
+print("\n" + "=" * 60)
+print("STEP 8: SAMPLE PREDICTIONS")
+print("=" * 60)
+
+for i in range(5):
+    sample = X_test_scaled[i].reshape(1, -1)
+    pred = model.predict(sample)[0]
+    proba = model.predict_proba(sample)[0]
+    actual = y_test.iloc[i]
+
+    print(f"\nStudent {i + 1}:")
+    print(f"  Actual: {'Placed' if actual == 1 else 'Not Placed'}")
+    print(f"  Predicted: {'Placed' if pred == 1 else 'Not Placed'}")
+    print(f"  Confidence: {max(proba) * 100:.2f}%")
